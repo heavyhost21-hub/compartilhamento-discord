@@ -10,9 +10,12 @@ const PORT = process.env.PORT || 3000;
 const MAX_VIEWERS = 5;
 
 const app = express();
+// Confiar no proxy reverso do Render para X-Forwarded-* headers
+app.set('trust proxy', 1);
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
+  transports: ['websocket', 'polling'], // Prioriza WebSocket em produção
   maxHttpBufferSize: 1e7,
   pingInterval: 10000,
   pingTimeout: 5000,

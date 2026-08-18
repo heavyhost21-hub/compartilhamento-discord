@@ -164,5 +164,12 @@ export function getServerUrl() {
   const params = new URLSearchParams(window.location.search);
   const host = params.get('host') || window.location.hostname;
   const port = params.get('port') || (import.meta.env.DEV ? '3000' : window.location.port || '3000');
-  return `http://${host}:${port}`;
+  
+  // Use WSS em HTTPS (Render), WS em HTTP (localhost)
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = window.location.protocol === 'https:' 
+    ? `${protocol}//${host}` // Sem porta em produção (Render usa 443)
+    : `http://${host}:${port}`; // Com porta em localhost
+  
+  return url;
 }
