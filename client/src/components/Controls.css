@@ -1,0 +1,120 @@
+.controls-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--discord-bg-secondary);
+  border-top: 1px solid var(--discord-divider);
+  min-height: 56px;
+}
+
+.controls-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.control-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+
+.share-btn {
+  background: var(--discord-brand);
+  color: white;
+}
+
+.share-btn:hover:not(:disabled) {
+  background: var(--discord-brand-hover);
+}
+
+.share-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.stop-btn {
+  background: var(--discord-red);
+  color: white;
+}
+
+.stop-btn:hover {
+  background: #d83438;
+}
+
+.quality-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quality-selector label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--discord-text-muted);
+  text-transform: uppercase;
+}
+
+.quality-selector select {
+  padding: 6px 10px;
+  background: var(--discord-input-bg);
+  border: 1px solid var(--discord-divider);
+  border-radius: var(--radius-sm);
+  color: var(--discord-text-normal);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.quality-selector select:disabled {
+  opacity: 0.5;
+}
+
+.viewer-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--discord-text-muted);
+}
+
+.controls-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.connection-status.online {
+  color: var(--discord-green);
+}
+
+.connection-status.online .status-dot {
+  background: var(--discord-green);
+}
+
+.connection-status.offline {
+  color: var(--discord-red);
+}
+
+.connection-status.offline .status-dot {
+  background: var(--discord-red);
+}

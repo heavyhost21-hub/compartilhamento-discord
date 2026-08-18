@@ -1,0 +1,321 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { io } from 'socket.io-client';
+import {
+  QUALITY_PRESETS,
+  applySenderParameters,
+  collectConnectionStats,
+  createPeerConnection,
+  getAdaptivePreset,
+  getOptimizedDisplayMedia,
+  getServerUrl,
+} from '../utils/webrtc.js';
+
+export function useScreenShare({ userName, isHost }) {
+  const socketRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const peerConnectionsRef = useRef(new Map());
+  const qualityRef = useRef('auto');
+  const statsIntervalRef = useRef(null);
+
+  const [connected, setConnected] = useState(false);
+  const [error, setError] = useState(null);
+  const [room, setRoom] = useState(null);
+  const [localStream, setLocalStream] = useState(null);
+  const [remoteStream, setRemoteStream] = useState(null);
+  const [sharing, setSharing] = useState(false);
+  const [quality, setQuality] = useState('auto');
+  const [stats, setStats] = useState(null);
+  const [myId, setMyId] = useState(null);
+
+  qualityRef.current = quality;
+
+  const cleanupPeer = useCallback((peerId) => {
+    const pc = peerConnectionsRef.current.get(peerId);
+    if (pc) {
+      pc.close();
+      peerConnectionsRef.current.delete(peerId);
+    }
+  }, []);
+
+  const cleanupAllPeers = useCallback(() => {
+    peerConnectionsRef.current.forEach((pc) => pc.close());
+    peerConnectionsRef.current.clear();
+  }, []);
+
+  const stopSharing = useCallback(() => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+    setLocalStream(null);
+    setSharing(false);
+    cleanupAllPeers();
+    socketRef.current?.emit('sharing-state', { sharing: false });
+  }, [cleanupAllPeers]);
+
+  const createHostPeerConnection = useCallback(async (viewerId, stream) => {
+    cleanupPeer(viewerId);
+
+    const pc = createPeerConnection();
+    peerConnectionsRef.current.set(viewerId, pc);
+
+    stream.getTracks().forEach((track) => {
+      const sender = pc.addTrack(track, stream);
+      if (track.kind === 'video') {
+        const preset = getAdaptivePreset(qualityRef.current, {});
+        applySenderParameters(sender, preset);
+      }
+    });
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socketRef.current?.emit('signal', {
+          targetId: viewerId,
+          signal: { type: 'candidate', candidate: event.candidate },
+        });
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        cleanupPeer(viewerId);
+      }
+    };
+
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: false,
+      offerToReceiveVideo: false,
+    });
+    await pc.setLocalDescription(offer);
+
+    socketRef.current?.emit('signal', {
+      targetId: viewerId,
+      signal: { type: 'offer', sdp: offer.sdp },
+    });
+  }, [cleanupPeer]);
+
+  const handleSignal = useCallback(async (fromId, signal) => {
+    if (isHost) {
+      const pc = peerConnectionsRef.current.get(fromId);
+      if (!pc) return;
+
+      if (signal.type === 'answer') {
+        await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: signal.sdp }));
+      }
+      if (signal.type === 'candidate') {
+        await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+      }
+    } else {
+      let pc = peerConnectionsRef.current.get(fromId);
+
+      if (signal.type === 'offer') {
+        cleanupPeer(fromId);
+        pc = createPeerConnection();
+        peerConnectionsRef.current.set(fromId, pc);
+
+        pc.ontrack = (event) => {
+          const [stream] = event.streams;
+          if (stream) setRemoteStream(stream);
+        };
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            socketRef.current?.emit('signal', {
+              targetId: fromId,
+              signal: { type: 'candidate', candidate: event.candidate },
+            });
+          }
+        };
+
+        await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: signal.sdp }));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        socketRef.current?.emit('signal', {
+          targetId: fromId,
+          signal: { type: 'answer', sdp: answer.sdp },
+        });
+      }
+
+      if (signal.type === 'candidate' && pc) {
+        await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+      }
+    }
+  }, [isHost, cleanupPeer]);
+
+  const handleSignalRef = useRef(handleSignal);
+  const createHostPeerConnectionRef = useRef(createHostPeerConnection);
+  const stopSharingRef = useRef(stopSharing);
+  const cleanupAllPeersRef = useRef(cleanupAllPeers);
+  handleSignalRef.current = handleSignal;
+  createHostPeerConnectionRef.current = createHostPeerConnection;
+  stopSharingRef.current = stopSharing;
+  cleanupAllPeersRef.current = cleanupAllPeers;
+
+  const startSharing = useCallback(async () => {
+    try {
+      setError(null);
+      const preset = QUALITY_PRESETS[qualityRef.current] ?? QUALITY_PRESETS.auto;
+      const stream = await getOptimizedDisplayMedia(preset);
+
+      stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+        stopSharing();
+      });
+
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+      setSharing(true);
+      socketRef.current?.emit('sharing-state', { sharing: true });
+
+      if (isHost) {
+        const viewerIds = (room?.viewers ?? [])
+          .filter((v) => !v.isHost)
+          .map((v) => v.id);
+
+        for (const viewerId of viewerIds) {
+          await createHostPeerConnection(viewerId, stream);
+        }
+      }
+    } catch (err) {
+      if (err.name !== 'NotAllowedError') {
+        setError('Não foi possível capturar a tela. Verifique as permissões.');
+      }
+    }
+  }, [isHost, room, createHostPeerConnection, stopSharing]);
+
+  const updateQuality = useCallback(async (newQuality) => {
+    setQuality(newQuality);
+    qualityRef.current = newQuality;
+
+    if (!localStreamRef.current) return;
+
+    const preset = getAdaptivePreset(newQuality, stats ?? {});
+
+    peerConnectionsRef.current.forEach((pc) => {
+      pc.getSenders().forEach((sender) => {
+        if (sender.track?.kind === 'video') {
+          applySenderParameters(sender, preset);
+        }
+      });
+    });
+
+    const videoTrack = localStreamRef.current.getVideoTracks()[0];
+    if (videoTrack) {
+      videoTrack.contentHint = preset.contentHint;
+    }
+  }, [stats]);
+
+  useEffect(() => {
+    const socket = io(getServerUrl(), {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+    });
+
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      setConnected(true);
+      socket.emit('join', { name: userName, asHost: isHost });
+    });
+
+    socket.on('disconnect', () => {
+      setConnected(false);
+    });
+
+    socket.on('joined', (data) => {
+      setMyId(data.id);
+      if (!isHost && data.isHost === false) {
+        socket.emit('request-offer', { hostId: true });
+      }
+    });
+
+    socket.on('room-update', (roomState) => {
+      setRoom(roomState);
+    });
+
+    socket.on('error', ({ message }) => {
+      setError(message);
+    });
+
+    socket.on('signal', ({ fromId, signal }) => {
+      handleSignalRef.current(fromId, signal);
+    });
+
+    socket.on('viewer-joined', async ({ viewerId }) => {
+      if (isHost && localStreamRef.current) {
+        await createHostPeerConnectionRef.current(viewerId, localStreamRef.current);
+      }
+    });
+
+    socket.on('host-left', () => {
+      setRemoteStream(null);
+      cleanupAllPeersRef.current();
+      setError('O host desconectou.');
+    });
+
+    return () => {
+      stopSharingRef.current();
+      cleanupAllPeersRef.current();
+      socket.disconnect();
+    };
+  }, [userName, isHost]);
+
+  useEffect(() => {
+    if (!sharing || !isHost) return;
+
+    statsIntervalRef.current = setInterval(async () => {
+      const allStats = [];
+      for (const pc of peerConnectionsRef.current.values()) {
+        const s = await collectConnectionStats(pc);
+        allStats.push(s);
+      }
+
+      if (allStats.length === 0) return;
+
+      const avg = allStats.reduce(
+        (acc, s) => ({
+          bitrate: acc.bitrate + s.bitrate,
+          packetsLost: Math.max(acc.packetsLost, s.packetsLost),
+          framesPerSecond: Math.min(acc.framesPerSecond || 999, s.framesPerSecond || 999),
+          frameWidth: Math.max(acc.frameWidth, s.frameWidth),
+          frameHeight: Math.max(acc.frameHeight, s.frameHeight),
+          roundTripTime: Math.max(acc.roundTripTime, s.roundTripTime),
+        }),
+        { bitrate: 0, packetsLost: 0, framesPerSecond: 0, frameWidth: 0, frameHeight: 0, roundTripTime: 0 },
+      );
+
+      setStats(avg);
+
+      if (qualityRef.current === 'auto') {
+        const adaptivePreset = getAdaptivePreset('auto', avg);
+        peerConnectionsRef.current.forEach((pc) => {
+          pc.getSenders().forEach((sender) => {
+            if (sender.track?.kind === 'video') {
+              applySenderParameters(sender, adaptivePreset);
+            }
+          });
+        });
+      }
+    }, 2000);
+
+    return () => clearInterval(statsIntervalRef.current);
+  }, [sharing, isHost]);
+
+  return {
+    connected,
+    error,
+    room,
+    myId,
+    localStream,
+    remoteStream,
+    sharing,
+    quality,
+    stats,
+    startSharing,
+    stopSharing,
+    updateQuality,
+    setError,
+  };
+}

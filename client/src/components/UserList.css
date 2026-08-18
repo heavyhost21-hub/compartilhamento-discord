@@ -1,0 +1,120 @@
+.user-list {
+  width: 240px;
+  min-width: 240px;
+  background: var(--discord-bg-secondary);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.user-list-header {
+  padding: 16px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--discord-text-muted);
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--discord-divider);
+}
+
+.viewer-limit {
+  color: var(--discord-text-normal);
+}
+
+.user-list-section {
+  padding: 12px 8px;
+}
+
+.user-list-section h3 {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--discord-text-muted);
+  padding: 4px 8px 8px;
+  letter-spacing: 0.02em;
+}
+
+.empty-viewers {
+  font-size: 13px;
+  color: var(--discord-text-muted);
+  padding: 8px;
+  font-style: italic;
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  transition: background 0.1s;
+}
+
+.user-item:hover {
+  background: rgba(79, 84, 92, 0.32);
+}
+
+.user-item.me {
+  background: rgba(88, 101, 242, 0.15);
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--discord-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
+  color: white;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.user-avatar.host {
+  background: var(--discord-green);
+}
+
+.user-avatar.sharing .sharing-dot {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 12px;
+  height: 12px;
+  background: var(--discord-red);
+  border-radius: 50%;
+  border: 2px solid var(--discord-bg-secondary);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.user-name {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-status {
+  font-size: 12px;
+  color: var(--discord-text-muted);
+}
+
+.user-item.me .user-status,
+.user-avatar.sharing + .user-info .user-status {
+  color: var(--discord-green);
+}

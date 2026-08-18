@@ -1,0 +1,135 @@
+.join-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--discord-bg-tertiary);
+}
+
+.join-card {
+  background: var(--discord-bg-primary);
+  border-radius: var(--radius-lg);
+  padding: 32px 40px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.join-logo {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.join-card h1 {
+  text-align: center;
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.join-subtitle {
+  text-align: center;
+  color: var(--discord-text-muted);
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+
+.join-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--discord-text-muted);
+  margin-bottom: 8px;
+  letter-spacing: 0.02em;
+}
+
+.join-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--discord-input-bg);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--discord-text-normal);
+  font-size: 16px;
+  margin-bottom: 20px;
+  transition: border-color 0.15s;
+}
+
+.join-input:focus {
+  border-color: var(--discord-brand);
+}
+
+.join-hint.viewer-connect-hint {
+  margin-top: 0;
+  margin-bottom: 20px;
+  padding: 10px 12px;
+  background: rgba(88, 101, 242, 0.12);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--discord-brand);
+}
+
+.mode-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.mode-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 16px 12px;
+  background: var(--discord-bg-secondary);
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--discord-text-normal);
+  transition: all 0.15s;
+}
+
+.mode-btn:hover {
+  background: var(--discord-bg-tertiary);
+}
+
+.mode-btn.active {
+  border-color: var(--discord-brand);
+  background: rgba(88, 101, 242, 0.1);
+}
+
+.mode-icon {
+  font-size: 28px;
+}
+
+.mode-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.mode-desc {
+  font-size: 11px;
+  color: var(--discord-text-muted);
+}
+
+.join-submit {
+  width: 100%;
+  padding: 12px;
+  background: var(--discord-brand);
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  transition: background 0.15s;
+  margin-top: 4px;
+}
+
+.join-submit:hover:not(:disabled) {
+  background: var(--discord-brand-hover);
+}
+
+.join-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

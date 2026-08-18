@@ -1,0 +1,71 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --discord-bg-primary: #313338;
+  --discord-bg-secondary: #2b2d31;
+  --discord-bg-tertiary: #1e1f22;
+  --discord-bg-floating: #111214;
+  --discord-text-normal: #dbdee1;
+  --discord-text-muted: #949ba4;
+  --discord-text-link: #00a8fc;
+  --discord-brand: #5865f2;
+  --discord-brand-hover: #4752c4;
+  --discord-green: #23a559;
+  --discord-red: #f23f43;
+  --discord-yellow: #f0b232;
+  --discord-header: #232428;
+  --discord-divider: #3f4147;
+  --discord-input-bg: #1e1f22;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  background: var(--discord-bg-primary);
+  color: var(--discord-text-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+input {
+  font-family: inherit;
+  outline: none;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--discord-bg-floating);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #1a1b1e;
+}
