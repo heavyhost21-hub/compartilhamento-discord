@@ -70,7 +70,7 @@ export default function Controls({
                 id="volume"
                 type="range"
                 min="0"
-                max="1.5"
+                max="1"
                 step="0.05"
                 value={audioVolume}
                 onChange={(e) => onAudioVolumeChange(Number(e.target.value))}

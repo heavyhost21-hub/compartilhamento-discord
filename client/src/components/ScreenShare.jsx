@@ -8,22 +8,26 @@ export default function ScreenShare({ stream, isLocal, label, sharing, audioVolu
   const [showControls, setShowControls] = useState(true);
   const hideTimer = useRef(null);
 
+  const safeVolume = Number.isFinite(audioVolume)
+    ? Math.min(1, Math.max(0, Number(audioVolume)))
+    : 1;
+
   useEffect(() => {
     const video = videoRef.current;
     if (video && stream) {
       video.srcObject = stream;
-      video.volume = audioVolume;
+      video.volume = safeVolume;
     }
     return () => {
       if (video) video.srcObject = null;
     };
-  }, [stream, audioVolume]);
+  }, [stream, safeVolume]);
 
   useEffect(() => {
     if (videoRef.current) {
-      videoRef.current.volume = audioVolume;
+      videoRef.current.volume = safeVolume;
     }
-  }, [audioVolume]);
+  }, [safeVolume]);
 
   const toggleFullscreen = async () => {
     if (!containerRef.current) return;

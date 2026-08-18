@@ -15,6 +15,7 @@ function MainRoom({ userName, isHost }) {
     myId,
     localStream,
     remoteStream,
+    remoteStreams,
     sharing,
     quality,
     audioMode,
@@ -28,13 +29,28 @@ function MainRoom({ userName, isHost }) {
     setError,
   } = useScreenShare({ userName, isHost });
 
-  const displayStream = isHost ? localStream : remoteStream;
   const hostUser = room?.viewers?.find((u) => u.isHost);
   const shareLabel = isHost
     ? 'Sua tela'
     : hostUser?.sharing
       ? `Tela de ${hostUser.name}`
       : null;
+
+  const shareStreams = isHost
+    ? [
+        ...(localStream ? [{ id: 'local', stream: localStream, label: 'Sua tela', isLocal: true, sharing }] : []),
+        ...Object.entries(remoteStreams).map(([peerId, stream]) => {
+          const user = room?.viewers?.find((u) => u.id === peerId);
+          return {
+            id: peerId,
+            stream,
+            label: user ? `Tela de ${user.name}` : 'Tela compartilhada',
+            isLocal: false,
+            sharing: user?.sharing ?? true,
+          };
+        }),
+      ]
+    : (remoteStream ? [{ id: 'host', stream: remoteStream, label: shareLabel, isLocal: false, sharing: hostUser?.sharing }] : []);
 
   return (
     <div className="app-layout">
@@ -73,13 +89,26 @@ function MainRoom({ userName, isHost }) {
           )}
 
           <div className="share-container">
-            <ScreenShare
-              stream={displayStream}
-              isLocal={isHost}
-              label={shareLabel}
-              sharing={isHost ? sharing : hostUser?.sharing}
-              audioVolume={audioVolume}
-            />
+            {shareStreams.length > 0 ? (
+              shareStreams.map((item) => (
+                <ScreenShare
+                  key={item.id}
+                  stream={item.stream}
+                  isLocal={item.isLocal}
+                  label={item.label}
+                  sharing={item.sharing}
+                  audioVolume={audioVolume}
+                />
+              ))
+            ) : (
+              <ScreenShare
+                stream={null}
+                isLocal={isHost}
+                label={shareLabel}
+                sharing={isHost ? sharing : hostUser?.sharing}
+                audioVolume={audioVolume}
+              />
+            )}
             {isHost && <StatsOverlay stats={stats} sharing={sharing} quality={quality} />}
           </div>
 

@@ -22,6 +22,7 @@ export function useScreenShare({ userName, isHost }) {
   const [room, setRoom] = useState(null);
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
+  const [remoteStreams, setRemoteStreams] = useState({});
   const [sharing, setSharing] = useState(false);
   const [quality, setQuality] = useState('auto');
   const [audioMode, setAudioMode] = useState('none');
@@ -36,17 +37,31 @@ export function useScreenShare({ userName, isHost }) {
   audioModeRef.current = audioMode;
   audioVolumeRef.current = audioVolume;
 
+  const syncRemoteStreamForPeer = useCallback((peerId, stream) => {
+    setRemoteStreams((current) => {
+      const next = { ...current };
+      if (stream) {
+        next[peerId] = stream;
+      } else {
+        delete next[peerId];
+      }
+      return next;
+    });
+  }, []);
+
   const cleanupPeer = useCallback((peerId) => {
     const pc = peerConnectionsRef.current.get(peerId);
     if (pc) {
       pc.close();
       peerConnectionsRef.current.delete(peerId);
     }
-  }, []);
+    syncRemoteStreamForPeer(peerId, null);
+  }, [syncRemoteStreamForPeer]);
 
   const cleanupAllPeers = useCallback(() => {
     peerConnectionsRef.current.forEach((pc) => pc.close());
     peerConnectionsRef.current.clear();
+    setRemoteStreams({});
   }, []);
 
   const stopSharing = useCallback(() => {
@@ -112,7 +127,10 @@ export function useScreenShare({ userName, isHost }) {
 
         pc.ontrack = (event) => {
           const [stream] = event.streams;
-          if (stream) setRemoteStream(stream);
+          if (stream) {
+            setRemoteStream(stream);
+            syncRemoteStreamForPeer(fromId, stream);
+          }
         };
 
         pc.onicecandidate = (event) => {
@@ -153,7 +171,10 @@ export function useScreenShare({ userName, isHost }) {
 
         pc.ontrack = (event) => {
           const [stream] = event.streams;
-          if (stream) setRemoteStream(stream);
+          if (stream) {
+            setRemoteStream(stream);
+            syncRemoteStreamForPeer(fromId, stream);
+          }
         };
 
         pc.onicecandidate = (event) => {
@@ -327,6 +348,7 @@ export function useScreenShare({ userName, isHost }) {
 
     socket.on('host-left', () => {
       setRemoteStream(null);
+      setRemoteStreams({});
       cleanupAllPeersRef.current();
       setError('O host desconectou.');
     });
@@ -386,8 +408,9 @@ export function useScreenShare({ userName, isHost }) {
 
   const updateAudioVolume = useCallback((volume) => {
     const value = Number(volume);
-    setAudioVolume(value);
-    audioVolumeRef.current = value;
+    const safeVolume = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1;
+    setAudioVolume(safeVolume);
+    audioVolumeRef.current = safeVolume;
   }, []);
 
   return {
@@ -397,6 +420,7 @@ export function useScreenShare({ userName, isHost }) {
     myId,
     localStream,
     remoteStream,
+    remoteStreams,
     sharing,
     quality,
     audioMode,
