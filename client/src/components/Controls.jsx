@@ -6,9 +6,13 @@ export default function Controls({
   sharing,
   connected,
   quality,
+  audioMode,
+  audioVolume,
   onStartShare,
   onStopShare,
   onQualityChange,
+  onAudioModeChange,
+  onAudioVolumeChange,
 }) {
   return (
     <div className="controls-bar">
@@ -43,6 +47,35 @@ export default function Controls({
                   <option key={key} value={key}>{preset.label}</option>
                 ))}
               </select>
+            </div>
+
+            <div className="quality-selector audio-selector">
+              <label htmlFor="audio-mode">Áudio</label>
+              <select
+                id="audio-mode"
+                value={audioMode}
+                onChange={(e) => onAudioModeChange(e.target.value)}
+                disabled={!connected}
+              >
+                <option value="none">Sem áudio</option>
+                <option value="mic">Microfone</option>
+                <option value="system">Sistema</option>
+                <option value="system-mic">Sistema + microfone</option>
+              </select>
+            </div>
+
+            <div className="quality-selector volume-selector">
+              <label htmlFor="volume">Volume</label>
+              <input
+                id="volume"
+                type="range"
+                min="0"
+                max="1.5"
+                step="0.05"
+                value={audioVolume}
+                onChange={(e) => onAudioVolumeChange(Number(e.target.value))}
+                disabled={!connected || audioMode === 'none'}
+              />
             </div>
           </>
         )}

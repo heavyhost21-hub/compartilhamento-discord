@@ -17,10 +17,14 @@ function MainRoom({ userName, isHost }) {
     remoteStream,
     sharing,
     quality,
+    audioMode,
+    audioVolume,
     stats,
     startSharing,
     stopSharing,
     updateQuality,
+    updateAudioMode,
+    updateAudioVolume,
     setError,
   } = useScreenShare({ userName, isHost });
 
@@ -74,6 +78,7 @@ function MainRoom({ userName, isHost }) {
               isLocal={isHost}
               label={shareLabel}
               sharing={isHost ? sharing : hostUser?.sharing}
+              audioVolume={audioVolume}
             />
             {isHost && <StatsOverlay stats={stats} sharing={sharing} quality={quality} />}
           </div>
@@ -83,9 +88,13 @@ function MainRoom({ userName, isHost }) {
             sharing={sharing}
             connected={connected}
             quality={quality}
+            audioMode={audioMode}
+            audioVolume={audioVolume}
             onStartShare={startSharing}
             onStopShare={stopSharing}
             onQualityChange={updateQuality}
+            onAudioModeChange={updateAudioMode}
+            onAudioVolumeChange={updateAudioVolume}
           />
         </main>
       </div>

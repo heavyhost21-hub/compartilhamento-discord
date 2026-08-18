@@ -24,10 +24,17 @@ export function useScreenShare({ userName, isHost }) {
   const [remoteStream, setRemoteStream] = useState(null);
   const [sharing, setSharing] = useState(false);
   const [quality, setQuality] = useState('auto');
+  const [audioMode, setAudioMode] = useState('none');
+  const [audioVolume, setAudioVolume] = useState(1);
   const [stats, setStats] = useState(null);
   const [myId, setMyId] = useState(null);
 
+  const audioModeRef = useRef('none');
+  const audioVolumeRef = useRef(1);
+
   qualityRef.current = quality;
+  audioModeRef.current = audioMode;
+  audioVolumeRef.current = audioVolume;
 
   const cleanupPeer = useCallback((peerId) => {
     const pc = peerConnectionsRef.current.get(peerId);
@@ -96,7 +103,38 @@ export function useScreenShare({ userName, isHost }) {
 
   const handleSignal = useCallback(async (fromId, signal) => {
     if (isHost) {
-      const pc = peerConnectionsRef.current.get(fromId);
+      let pc = peerConnectionsRef.current.get(fromId);
+
+      if (signal.type === 'offer') {
+        cleanupPeer(fromId);
+        pc = createPeerConnection();
+        peerConnectionsRef.current.set(fromId, pc);
+
+        pc.ontrack = (event) => {
+          const [stream] = event.streams;
+          if (stream) setRemoteStream(stream);
+        };
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            socketRef.current?.emit('signal', {
+              targetId: fromId,
+              signal: { type: 'candidate', candidate: event.candidate },
+            });
+          }
+        };
+
+        await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: signal.sdp }));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        socketRef.current?.emit('signal', {
+          targetId: fromId,
+          signal: { type: 'answer', sdp: answer.sdp },
+        });
+        return;
+      }
+
       if (!pc) return;
 
       if (signal.type === 'answer') {
@@ -152,11 +190,47 @@ export function useScreenShare({ userName, isHost }) {
   stopSharingRef.current = stopSharing;
   cleanupAllPeersRef.current = cleanupAllPeers;
 
+  const createViewerPeerConnection = useCallback(async (hostIdToReach) => {
+    cleanupPeer(hostIdToReach);
+
+    const pc = createPeerConnection();
+    peerConnectionsRef.current.set(hostIdToReach, pc);
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => {
+        pc.addTrack(track, localStreamRef.current);
+      });
+    }
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socketRef.current?.emit('signal', {
+          targetId: hostIdToReach,
+          signal: { type: 'candidate', candidate: event.candidate },
+        });
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        cleanupPeer(hostIdToReach);
+      }
+    };
+
+    const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
+    await pc.setLocalDescription(offer);
+
+    socketRef.current?.emit('signal', {
+      targetId: hostIdToReach,
+      signal: { type: 'offer', sdp: offer.sdp },
+    });
+  }, [cleanupPeer]);
+
   const startSharing = useCallback(async () => {
     try {
       setError(null);
       const preset = QUALITY_PRESETS[qualityRef.current] ?? QUALITY_PRESETS.auto;
-      const stream = await getOptimizedDisplayMedia(preset);
+      const stream = await getOptimizedDisplayMedia(preset, { audioMode: audioModeRef.current });
 
       stream.getVideoTracks()[0]?.addEventListener('ended', () => {
         stopSharing();
@@ -167,21 +241,23 @@ export function useScreenShare({ userName, isHost }) {
       setSharing(true);
       socketRef.current?.emit('sharing-state', { sharing: true });
 
-      if (isHost) {
-        const viewerIds = (room?.viewers ?? [])
-          .filter((v) => !v.isHost)
-          .map((v) => v.id);
+      const peersToReach = (room?.viewers ?? [])
+        .filter((v) => v.id !== socketRef.current?.id)
+        .map((v) => v.id);
 
-        for (const viewerId of viewerIds) {
+      if (isHost) {
+        for (const viewerId of peersToReach) {
           await createHostPeerConnection(viewerId, stream);
         }
+      } else if (room?.hostId) {
+        await createViewerPeerConnection(room.hostId);
       }
     } catch (err) {
       if (err.name !== 'NotAllowedError') {
         setError('Não foi possível capturar a tela. Verifique as permissões.');
       }
     }
-  }, [isHost, room, createHostPeerConnection, stopSharing]);
+  }, [isHost, room, createHostPeerConnection, createViewerPeerConnection, stopSharing]);
 
   const updateQuality = useCallback(async (newQuality) => {
     setQuality(newQuality);
@@ -303,6 +379,17 @@ export function useScreenShare({ userName, isHost }) {
     return () => clearInterval(statsIntervalRef.current);
   }, [sharing, isHost]);
 
+  const updateAudioMode = useCallback((mode) => {
+    setAudioMode(mode);
+    audioModeRef.current = mode;
+  }, []);
+
+  const updateAudioVolume = useCallback((volume) => {
+    const value = Number(volume);
+    setAudioVolume(value);
+    audioVolumeRef.current = value;
+  }, []);
+
   return {
     connected,
     error,
@@ -312,10 +399,14 @@ export function useScreenShare({ userName, isHost }) {
     remoteStream,
     sharing,
     quality,
+    audioMode,
+    audioVolume,
     stats,
     startSharing,
     stopSharing,
     updateQuality,
+    updateAudioMode,
+    updateAudioVolume,
     setError,
   };
 }

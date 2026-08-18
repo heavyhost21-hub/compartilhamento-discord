@@ -51,7 +51,18 @@ export function createPeerConnection() {
   return pc;
 }
 
-export async function getOptimizedDisplayMedia(preset = QUALITY_PRESETS.auto) {
+export function mergeMediaStreams(...streams) {
+  const merged = new MediaStream();
+  streams.filter(Boolean).forEach((stream) => {
+    stream.getTracks().forEach((track) => merged.addTrack(track));
+  });
+  return merged;
+}
+
+export async function getOptimizedDisplayMedia(preset = QUALITY_PRESETS.auto, { audioMode = 'none' } = {}) {
+  const includeSystemAudio = audioMode === 'system' || audioMode === 'system-mic';
+  const includeMicAudio = audioMode === 'mic' || audioMode === 'system-mic';
+
   const stream = await navigator.mediaDevices.getDisplayMedia({
     video: {
       cursor: 'always',
@@ -59,15 +70,15 @@ export async function getOptimizedDisplayMedia(preset = QUALITY_PRESETS.auto) {
       width: { ideal: 1920, max: 3840 },
       height: { ideal: 1080, max: 2160 },
     },
-    audio: {
+    audio: includeSystemAudio ? {
       echoCancellation: false,
       noiseSuppression: false,
       autoGainControl: false,
       suppressLocalAudioPlayback: false,
-    },
+    } : false,
     preferCurrentTab: false,
     selfBrowserSurface: 'exclude',
-    systemAudio: 'include',
+    systemAudio: includeSystemAudio ? 'include' : 'exclude',
     surfaceSwitching: 'include',
     monitorTypeSurfaces: 'include',
   });
@@ -77,7 +88,18 @@ export async function getOptimizedDisplayMedia(preset = QUALITY_PRESETS.auto) {
     videoTrack.contentHint = preset.contentHint;
   }
 
-  return stream;
+  if (!includeMicAudio) return stream;
+
+  const micStream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+    video: false,
+  });
+
+  return mergeMediaStreams(stream, micStream);
 }
 
 export async function applySenderParameters(sender, preset) {

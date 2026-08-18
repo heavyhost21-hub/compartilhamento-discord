@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import './ScreenShare.css';
 
-export default function ScreenShare({ stream, isLocal, label, sharing }) {
+export default function ScreenShare({ stream, isLocal, label, sharing, audioVolume = 1 }) {
   const videoRef = useRef(null);
   const containerRef = useRef(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -12,11 +12,18 @@ export default function ScreenShare({ stream, isLocal, label, sharing }) {
     const video = videoRef.current;
     if (video && stream) {
       video.srcObject = stream;
+      video.volume = audioVolume;
     }
     return () => {
       if (video) video.srcObject = null;
     };
-  }, [stream]);
+  }, [stream, audioVolume]);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.volume = audioVolume;
+    }
+  }, [audioVolume]);
 
   const toggleFullscreen = async () => {
     if (!containerRef.current) return;
