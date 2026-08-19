@@ -38,10 +38,10 @@ export default function UserList({ users, myId, maxViewers, viewerCount }) {
         )}
         {users.filter((u) => !u.isHost).map((user) => (
           <div key={user.id} className={`user-item ${user.id === myId ? 'me' : ''}`}>
-            <Avatar name={user.name} isSharing={false} />
+            <Avatar name={user.name} isSharing={user.sharing} />
             <div className="user-info">
               <span className="user-name">{user.name}{user.id === myId ? ' (você)' : ''}</span>
-              <span className="user-status">Assistindo</span>
+              <span className="user-status">{user.sharing ? 'Compartilhando tela' : 'Assistindo'}</span>
             </div>
           </div>
         ))}

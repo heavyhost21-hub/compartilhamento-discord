@@ -36,21 +36,19 @@ function MainRoom({ userName, isHost }) {
       ? `Tela de ${hostUser.name}`
       : null;
 
-  const shareStreams = isHost
-    ? [
-        ...(localStream ? [{ id: 'local', stream: localStream, label: 'Sua tela', isLocal: true, sharing }] : []),
-        ...Object.entries(remoteStreams).map(([peerId, stream]) => {
-          const user = room?.viewers?.find((u) => u.id === peerId);
-          return {
-            id: peerId,
-            stream,
-            label: user ? `Tela de ${user.name}` : 'Tela compartilhada',
-            isLocal: false,
-            sharing: user?.sharing ?? true,
-          };
-        }),
-      ]
-    : (remoteStream ? [{ id: 'host', stream: remoteStream, label: shareLabel, isLocal: false, sharing: hostUser?.sharing }] : []);
+  const shareStreams = [
+    ...(localStream ? [{ id: 'local', stream: localStream, label: 'Sua tela', isLocal: true, sharing }] : []),
+    ...Object.entries(remoteStreams).map(([peerId, stream]) => {
+      const user = room?.viewers?.find((u) => u.id === peerId);
+      return {
+        id: peerId,
+        stream,
+        label: user ? `Tela de ${user.name}` : 'Tela compartilhada',
+        isLocal: false,
+        sharing: user?.sharing ?? true,
+      };
+    }).filter((item) => item.sharing),
+  ];
 
   return (
     <div className="app-layout">

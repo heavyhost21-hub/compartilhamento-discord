@@ -32,6 +32,8 @@ export function useScreenShare({ userName, isHost }) {
 
   const audioModeRef = useRef('none');
   const audioVolumeRef = useRef(1);
+  const myIdRef = useRef(null);
+  const roomRef = useRef(null);
 
   qualityRef.current = quality;
   audioModeRef.current = audioMode;
@@ -49,6 +51,8 @@ export function useScreenShare({ userName, isHost }) {
     });
   }, []);
 
+  const handleSignalRef = useRef(null);
+
   const cleanupPeer = useCallback((peerId) => {
     const pc = peerConnectionsRef.current.get(peerId);
     if (pc) {
@@ -64,188 +68,128 @@ export function useScreenShare({ userName, isHost }) {
     setRemoteStreams({});
   }, []);
 
-  const stopSharing = useCallback(() => {
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
-      localStreamRef.current = null;
-    }
-    setLocalStream(null);
-    setSharing(false);
-    cleanupAllPeers();
-    socketRef.current?.emit('sharing-state', { sharing: false });
-  }, [cleanupAllPeers]);
-
-  const createHostPeerConnection = useCallback(async (viewerId, stream) => {
-    cleanupPeer(viewerId);
-
-    const pc = createPeerConnection();
-    peerConnectionsRef.current.set(viewerId, pc);
-
-    stream.getTracks().forEach((track) => {
-      const sender = pc.addTrack(track, stream);
+  const addLocalTracks = useCallback((pc) => {
+    if (!localStreamRef.current) return;
+    const existingTracks = new Set(pc.getSenders().map((sender) => sender.track).filter(Boolean));
+    localStreamRef.current.getTracks().forEach((track) => {
+      if (existingTracks.has(track)) return;
+      const sender = pc.addTrack(track, localStreamRef.current);
       if (track.kind === 'video') {
-        const preset = getAdaptivePreset(qualityRef.current, {});
-        applySenderParameters(sender, preset);
+        applySenderParameters(sender, getAdaptivePreset(qualityRef.current, {}));
       }
     });
+  }, []);
 
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socketRef.current?.emit('signal', {
-          targetId: viewerId,
-          signal: { type: 'candidate', candidate: event.candidate },
-        });
-      }
-    };
-
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-        cleanupPeer(viewerId);
-      }
-    };
-
-    const offer = await pc.createOffer({
-      offerToReceiveAudio: false,
-      offerToReceiveVideo: false,
-    });
-    await pc.setLocalDescription(offer);
-
-    socketRef.current?.emit('signal', {
-      targetId: viewerId,
-      signal: { type: 'offer', sdp: offer.sdp },
-    });
-  }, [cleanupPeer]);
-
-  const handleSignal = useCallback(async (fromId, signal) => {
-    if (isHost) {
-      let pc = peerConnectionsRef.current.get(fromId);
-
-      if (signal.type === 'offer') {
-        cleanupPeer(fromId);
-        pc = createPeerConnection();
-        peerConnectionsRef.current.set(fromId, pc);
-
-        pc.ontrack = (event) => {
-          const [stream] = event.streams;
-          if (stream) {
-            setRemoteStream(stream);
-            syncRemoteStreamForPeer(fromId, stream);
-          }
-        };
-
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            socketRef.current?.emit('signal', {
-              targetId: fromId,
-              signal: { type: 'candidate', candidate: event.candidate },
-            });
-          }
-        };
-
-        await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: signal.sdp }));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        socketRef.current?.emit('signal', {
-          targetId: fromId,
-          signal: { type: 'answer', sdp: answer.sdp },
-        });
-        return;
-      }
-
-      if (!pc) return;
-
-      if (signal.type === 'answer') {
-        await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: signal.sdp }));
-      }
-      if (signal.type === 'candidate') {
-        await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-      }
-    } else {
-      let pc = peerConnectionsRef.current.get(fromId);
-
-      if (signal.type === 'offer') {
-        cleanupPeer(fromId);
-        pc = createPeerConnection();
-        peerConnectionsRef.current.set(fromId, pc);
-
-        pc.ontrack = (event) => {
-          const [stream] = event.streams;
-          if (stream) {
-            setRemoteStream(stream);
-            syncRemoteStreamForPeer(fromId, stream);
-          }
-        };
-
-        pc.onicecandidate = (event) => {
-          if (event.candidate) {
-            socketRef.current?.emit('signal', {
-              targetId: fromId,
-              signal: { type: 'candidate', candidate: event.candidate },
-            });
-          }
-        };
-
-        await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: signal.sdp }));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-
-        socketRef.current?.emit('signal', {
-          targetId: fromId,
-          signal: { type: 'answer', sdp: answer.sdp },
-        });
-      }
-
-      if (signal.type === 'candidate' && pc) {
-        await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
-      }
-    }
-  }, [isHost, cleanupPeer]);
-
-  const handleSignalRef = useRef(handleSignal);
-  const createHostPeerConnectionRef = useRef(createHostPeerConnection);
-  const stopSharingRef = useRef(stopSharing);
-  const cleanupAllPeersRef = useRef(cleanupAllPeers);
-  handleSignalRef.current = handleSignal;
-  createHostPeerConnectionRef.current = createHostPeerConnection;
-  stopSharingRef.current = stopSharing;
-  cleanupAllPeersRef.current = cleanupAllPeers;
-
-  const createViewerPeerConnection = useCallback(async (hostIdToReach) => {
-    cleanupPeer(hostIdToReach);
+  const createPeer = useCallback((peerId) => {
+    const existing = peerConnectionsRef.current.get(peerId);
+    if (existing) return existing;
 
     const pc = createPeerConnection();
-    peerConnectionsRef.current.set(hostIdToReach, pc);
+    peerConnectionsRef.current.set(peerId, pc);
+    addLocalTracks(pc);
 
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => {
-        pc.addTrack(track, localStreamRef.current);
-      });
-    }
-
+    pc.ontrack = (event) => {
+      const [stream] = event.streams;
+      if (stream) {
+        setRemoteStream(stream);
+        syncRemoteStreamForPeer(peerId, stream);
+      }
+    };
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         socketRef.current?.emit('signal', {
-          targetId: hostIdToReach,
+          targetId: peerId,
           signal: { type: 'candidate', candidate: event.candidate },
         });
       }
     };
-
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-        cleanupPeer(hostIdToReach);
-      }
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') cleanupPeer(peerId);
     };
+    return pc;
+  }, [addLocalTracks, cleanupPeer, syncRemoteStreamForPeer]);
 
+  const initiatePeer = useCallback(async (peerId) => {
+    if (!myIdRef.current || myIdRef.current > peerId) return;
+    const pc = createPeer(peerId);
+    if (pc.signalingState !== 'stable') return;
     const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
     await pc.setLocalDescription(offer);
-
     socketRef.current?.emit('signal', {
-      targetId: hostIdToReach,
+      targetId: peerId,
       signal: { type: 'offer', sdp: offer.sdp },
     });
-  }, [cleanupPeer]);
+  }, [createPeer]);
+
+  const handleSignal = useCallback(async (fromId, signal) => {
+    let pc = createPeer(fromId);
+
+    if (signal.type === 'offer') {
+      if (pc.signalingState !== 'stable') {
+        cleanupPeer(fromId);
+        pc = createPeer(fromId);
+      }
+      await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: signal.sdp }));
+      addLocalTracks(pc);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socketRef.current?.emit('signal', {
+        targetId: fromId,
+        signal: { type: 'answer', sdp: answer.sdp },
+      });
+      return;
+    }
+
+    if (signal.type === 'answer' && pc.signalingState === 'have-local-offer') {
+      await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: signal.sdp }));
+    }
+    if (signal.type === 'candidate' && pc.remoteDescription) {
+      await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+    }
+  }, [addLocalTracks, cleanupPeer, createPeer]);
+
+  handleSignalRef.current = handleSignal;
+
+  const syncPeers = useCallback((roomState) => {
+    roomRef.current = roomState;
+    const participantIds = new Set((roomState.viewers ?? []).map((user) => user.id));
+    participantIds.delete(myIdRef.current);
+
+    peerConnectionsRef.current.forEach((_pc, peerId) => {
+      if (!participantIds.has(peerId)) cleanupPeer(peerId);
+    });
+    participantIds.forEach((peerId) => {
+      createPeer(peerId);
+      initiatePeer(peerId);
+    });
+  }, [cleanupPeer, createPeer, initiatePeer]);
+
+  const stopSharing = useCallback(() => {
+    const previousStream = localStreamRef.current;
+    if (!previousStream) return;
+
+    peerConnectionsRef.current.forEach(async (pc, peerId) => {
+      previousStream.getTracks().forEach((track) => {
+        const sender = pc.getSenders().find((candidate) => candidate.track === track);
+        if (sender) pc.removeTrack(sender);
+      });
+
+      if (pc.signalingState === 'stable') {
+        const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
+        await pc.setLocalDescription(offer);
+        socketRef.current?.emit('signal', {
+          targetId: peerId,
+          signal: { type: 'offer', sdp: offer.sdp },
+        });
+      }
+    });
+
+    previousStream.getTracks().forEach((track) => track.stop());
+    localStreamRef.current = null;
+    setLocalStream(null);
+    setSharing(false);
+    socketRef.current?.emit('sharing-state', { sharing: false });
+  }, []);
 
   const startSharing = useCallback(async () => {
     try {
@@ -261,24 +205,19 @@ export function useScreenShare({ userName, isHost }) {
       setLocalStream(stream);
       setSharing(true);
       socketRef.current?.emit('sharing-state', { sharing: true });
-
-      const peersToReach = (room?.viewers ?? [])
-        .filter((v) => v.id !== socketRef.current?.id)
-        .map((v) => v.id);
-
-      if (isHost) {
-        for (const viewerId of peersToReach) {
-          await createHostPeerConnection(viewerId, stream);
-        }
-      } else if (room?.hostId) {
-        await createViewerPeerConnection(room.hostId);
-      }
+      (roomRef.current?.viewers ?? [])
+        .filter((user) => user.id !== myIdRef.current)
+        .forEach((user) => {
+          const pc = createPeer(user.id);
+          addLocalTracks(pc);
+          initiatePeer(user.id);
+        });
     } catch (err) {
       if (err.name !== 'NotAllowedError') {
         setError('Não foi possível capturar a tela. Verifique as permissões.');
       }
     }
-  }, [isHost, room, createHostPeerConnection, createViewerPeerConnection, stopSharing]);
+  }, [addLocalTracks, createPeer, initiatePeer, stopSharing]);
 
   const updateQuality = useCallback(async (newQuality) => {
     setQuality(newQuality);
@@ -323,13 +262,12 @@ export function useScreenShare({ userName, isHost }) {
 
     socket.on('joined', (data) => {
       setMyId(data.id);
-      if (!isHost && data.isHost === false) {
-        socket.emit('request-offer', { hostId: true });
-      }
+      myIdRef.current = data.id;
     });
 
     socket.on('room-update', (roomState) => {
       setRoom(roomState);
+      syncPeers(roomState);
     });
 
     socket.on('error', ({ message }) => {
@@ -340,25 +278,19 @@ export function useScreenShare({ userName, isHost }) {
       handleSignalRef.current(fromId, signal);
     });
 
-    socket.on('viewer-joined', async ({ viewerId }) => {
-      if (isHost && localStreamRef.current) {
-        await createHostPeerConnectionRef.current(viewerId, localStreamRef.current);
-      }
-    });
-
     socket.on('host-left', () => {
       setRemoteStream(null);
       setRemoteStreams({});
-      cleanupAllPeersRef.current();
+      cleanupAllPeers();
       setError('O host desconectou.');
     });
 
     return () => {
-      stopSharingRef.current();
-      cleanupAllPeersRef.current();
+      stopSharing();
+      cleanupAllPeers();
       socket.disconnect();
     };
-  }, [userName, isHost]);
+  }, [cleanupAllPeers, isHost, stopSharing, syncPeers, userName]);
 
   useEffect(() => {
     if (!sharing || !isHost) return;
