@@ -59,8 +59,6 @@ export default function Controls({
               >
                 <option value="none">Sem áudio</option>
                 <option value="mic">Microfone</option>
-                <option value="system">Sistema</option>
-                <option value="system-mic">Sistema + microfone</option>
               </select>
             </div>
 

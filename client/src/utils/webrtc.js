@@ -60,8 +60,7 @@ export function mergeMediaStreams(...streams) {
 }
 
 export async function getOptimizedDisplayMedia(preset = QUALITY_PRESETS.auto, { audioMode = 'none' } = {}) {
-  const includeSystemAudio = audioMode === 'system' || audioMode === 'system-mic';
-  const includeMicAudio = audioMode === 'mic' || audioMode === 'system-mic';
+  const includeMicAudio = audioMode === 'mic';
 
   const stream = await navigator.mediaDevices.getDisplayMedia({
     video: {
@@ -70,15 +69,10 @@ export async function getOptimizedDisplayMedia(preset = QUALITY_PRESETS.auto, { 
       width: { ideal: 1920, max: 3840 },
       height: { ideal: 1080, max: 2160 },
     },
-    audio: includeSystemAudio ? {
-      echoCancellation: false,
-      noiseSuppression: false,
-      autoGainControl: false,
-      suppressLocalAudioPlayback: false,
-    } : false,
+    audio: false,
     preferCurrentTab: false,
     selfBrowserSurface: 'exclude',
-    systemAudio: includeSystemAudio ? 'include' : 'exclude',
+    systemAudio: 'exclude',
     surfaceSwitching: 'include',
     monitorTypeSurfaces: 'include',
   });
