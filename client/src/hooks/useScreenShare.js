@@ -402,9 +402,8 @@ export function useScreenShare({ userName, isHost }) {
   }, [sharing, isHost]);
 
   const updateAudioMode = useCallback((mode) => {
-    const safeMode = mode === 'mic' ? 'mic' : 'none';
-    setAudioMode(safeMode);
-    audioModeRef.current = safeMode;
+    setAudioMode(mode);
+    audioModeRef.current = mode;
   }, []);
 
   const updateAudioVolume = useCallback((volume) => {
