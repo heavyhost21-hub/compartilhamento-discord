@@ -118,7 +118,6 @@ export function useScreenShare({ userName, isHost }) {
   }, [addLocalTracks, cleanupPeer, syncRemoteStreamForPeer]);
 
   const initiatePeer = useCallback(async (peerId) => {
-    if (!myIdRef.current || myIdRef.current > peerId) return;
     const pc = createPeer(peerId);
     if (pc.signalingState !== 'stable') return;
     const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
@@ -133,7 +132,9 @@ export function useScreenShare({ userName, isHost }) {
     let pc = createPeer(fromId);
 
     if (signal.type === 'offer') {
-      if (pc.signalingState !== 'stable') {
+      if (pc.signalingState === 'have-local-offer') {
+        await pc.setLocalDescription({ type: 'rollback' });
+      } else if (pc.signalingState !== 'stable') {
         cleanupPeer(fromId);
         pc = createPeer(fromId);
       }
