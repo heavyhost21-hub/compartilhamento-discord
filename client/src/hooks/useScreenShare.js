@@ -86,6 +86,8 @@ export function useScreenShare({ userName, isHost }) {
 
     const pc = createPeerConnection();
     peerConnectionsRef.current.set(peerId, pc);
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.addTransceiver('audio', { direction: 'recvonly' });
     addLocalTracks(pc);
 
     pc.ontrack = (event) => {
@@ -113,7 +115,7 @@ export function useScreenShare({ userName, isHost }) {
     if (!myIdRef.current || myIdRef.current > peerId) return;
     const pc = createPeer(peerId);
     if (pc.signalingState !== 'stable') return;
-    const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
+    const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
     await pc.setLocalDescription(offer);
     socketRef.current?.emit('signal', {
       targetId: peerId,

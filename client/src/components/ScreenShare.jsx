@@ -17,6 +17,7 @@ export default function ScreenShare({ stream, isLocal, label, sharing, audioVolu
     if (video && stream) {
       video.srcObject = stream;
       video.volume = safeVolume;
+      video.play().catch(() => {});
     }
     return () => {
       if (video) video.srcObject = null;
