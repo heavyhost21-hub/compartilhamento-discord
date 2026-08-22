@@ -74,14 +74,16 @@ export function useScreenShare({ userName, isHost }) {
 
   const addLocalTracks = useCallback((pc) => {
     if (!localStreamRef.current) return;
-    const existingTracks = new Set(pc.getSenders().map((sender) => sender.track).filter(Boolean));
-    localStreamRef.current.getTracks().forEach((track) => {
-      if (existingTracks.has(track)) return;
-      const sender = pc.addTrack(track, localStreamRef.current);
-      if (track.kind === 'video') {
-        applySenderParameters(sender, getAdaptivePreset(qualityRef.current, {}));
+    for (const kind of ['video', 'audio']) {
+      const track = localStreamRef.current.getTracks().find((candidate) => candidate.kind === kind);
+      const transceiver = pc.getTransceivers().find((candidate) => candidate.receiver.track.kind === kind);
+      if (!track || !transceiver) continue;
+      transceiver.direction = 'sendrecv';
+      transceiver.sender.replaceTrack(track);
+      if (kind === 'video') {
+        applySenderParameters(transceiver.sender, getAdaptivePreset(qualityRef.current, {}));
       }
-    });
+    }
   }, []);
 
   const createPeer = useCallback((peerId) => {
@@ -190,12 +192,15 @@ export function useScreenShare({ userName, isHost }) {
 
     peerConnectionsRef.current.forEach(async (pc, peerId) => {
       previousStream.getTracks().forEach((track) => {
-        const sender = pc.getSenders().find((candidate) => candidate.track === track);
-        if (sender) pc.removeTrack(sender);
+        const transceiver = pc.getTransceivers().find((candidate) => candidate.sender.track === track);
+        if (transceiver) {
+          transceiver.sender.replaceTrack(null);
+          transceiver.direction = 'recvonly';
+        }
       });
 
       if (pc.signalingState === 'stable') {
-        const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
+        const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
         await pc.setLocalDescription(offer);
         socketRef.current?.emit('signal', {
           targetId: peerId,
