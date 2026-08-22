@@ -16,6 +16,7 @@ export function useScreenShare({ userName, isHost }) {
   const peerConnectionsRef = useRef(new Map());
   const pendingCandidatesRef = useRef(new Map());
   const remoteMediaStreamsRef = useRef(new Map());
+  const makingOfferRef = useRef(new Map());
   const qualityRef = useRef('auto');
   const statsIntervalRef = useRef(null);
 
@@ -63,6 +64,7 @@ export function useScreenShare({ userName, isHost }) {
     }
     pendingCandidatesRef.current.delete(peerId);
     remoteMediaStreamsRef.current.delete(peerId);
+    makingOfferRef.current.delete(peerId);
     syncRemoteStreamForPeer(peerId, null);
   }, [syncRemoteStreamForPeer]);
 
@@ -120,19 +122,28 @@ export function useScreenShare({ userName, isHost }) {
   const initiatePeer = useCallback(async (peerId) => {
     const pc = createPeer(peerId);
     if (pc.signalingState !== 'stable') return;
-    const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
-    await pc.setLocalDescription(offer);
-    socketRef.current?.emit('signal', {
-      targetId: peerId,
-      signal: { type: 'offer', sdp: offer.sdp },
-    });
+    makingOfferRef.current.set(peerId, true);
+    try {
+      const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+      if (pc.signalingState !== 'stable') return;
+      await pc.setLocalDescription(offer);
+      socketRef.current?.emit('signal', {
+        targetId: peerId,
+        signal: { type: 'offer', sdp: offer.sdp },
+      });
+    } finally {
+      makingOfferRef.current.set(peerId, false);
+    }
   }, [createPeer]);
 
   const handleSignal = useCallback(async (fromId, signal) => {
     let pc = createPeer(fromId);
 
     if (signal.type === 'offer') {
-      if (pc.signalingState === 'have-local-offer') {
+      const isPolite = myIdRef.current > fromId;
+      const offerCollision = makingOfferRef.current.get(fromId) || pc.signalingState !== 'stable';
+      if (offerCollision && !isPolite) return;
+      if (offerCollision && isPolite && pc.signalingState === 'have-local-offer') {
         await pc.setLocalDescription({ type: 'rollback' });
       } else if (pc.signalingState !== 'stable') {
         cleanupPeer(fromId);
@@ -154,7 +165,8 @@ export function useScreenShare({ userName, isHost }) {
       return;
     }
 
-    if (signal.type === 'answer' && pc.signalingState === 'have-local-offer') {
+    if (signal.type === 'answer') {
+      if (pc.signalingState !== 'have-local-offer') return;
       await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: signal.sdp }));
       const pendingCandidates = pendingCandidatesRef.current.get(fromId) ?? [];
       for (const candidate of pendingCandidates) {
