@@ -14,6 +14,8 @@ export function useScreenShare({ userName, isHost }) {
   const socketRef = useRef(null);
   const localStreamRef = useRef(null);
   const peerConnectionsRef = useRef(new Map());
+  const pendingCandidatesRef = useRef(new Map());
+  const remoteMediaStreamsRef = useRef(new Map());
   const qualityRef = useRef('auto');
   const statsIntervalRef = useRef(null);
 
@@ -59,6 +61,8 @@ export function useScreenShare({ userName, isHost }) {
       pc.close();
       peerConnectionsRef.current.delete(peerId);
     }
+    pendingCandidatesRef.current.delete(peerId);
+    remoteMediaStreamsRef.current.delete(peerId);
     syncRemoteStreamForPeer(peerId, null);
   }, [syncRemoteStreamForPeer]);
 
@@ -91,11 +95,11 @@ export function useScreenShare({ userName, isHost }) {
     addLocalTracks(pc);
 
     pc.ontrack = (event) => {
-      const [stream] = event.streams;
-      if (stream) {
-        setRemoteStream(stream);
-        syncRemoteStreamForPeer(peerId, stream);
-      }
+      const stream = event.streams[0] ?? remoteMediaStreamsRef.current.get(peerId) ?? new MediaStream();
+      if (!event.streams[0] && !stream.getTracks().includes(event.track)) stream.addTrack(event.track);
+      remoteMediaStreamsRef.current.set(peerId, stream);
+      setRemoteStream(stream);
+      syncRemoteStreamForPeer(peerId, stream);
     };
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -133,6 +137,11 @@ export function useScreenShare({ userName, isHost }) {
       }
       await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: signal.sdp }));
       addLocalTracks(pc);
+      const pendingCandidates = pendingCandidatesRef.current.get(fromId) ?? [];
+      for (const candidate of pendingCandidates) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+      pendingCandidatesRef.current.delete(fromId);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       socketRef.current?.emit('signal', {
@@ -144,9 +153,18 @@ export function useScreenShare({ userName, isHost }) {
 
     if (signal.type === 'answer' && pc.signalingState === 'have-local-offer') {
       await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: signal.sdp }));
+      const pendingCandidates = pendingCandidatesRef.current.get(fromId) ?? [];
+      for (const candidate of pendingCandidates) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+      pendingCandidatesRef.current.delete(fromId);
     }
     if (signal.type === 'candidate' && pc.remoteDescription) {
       await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+    } else if (signal.type === 'candidate') {
+      const pendingCandidates = pendingCandidatesRef.current.get(fromId) ?? [];
+      pendingCandidates.push(signal.candidate);
+      pendingCandidatesRef.current.set(fromId, pendingCandidates);
     }
   }, [addLocalTracks, cleanupPeer, createPeer]);
 
