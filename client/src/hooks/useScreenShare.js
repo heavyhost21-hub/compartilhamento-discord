@@ -17,6 +17,8 @@ export function useScreenShare({ userName, isHost }) {
   const pendingCandidatesRef = useRef(new Map());
   const remoteMediaStreamsRef = useRef(new Map());
   const makingOfferRef = useRef(new Map());
+  const negotiationPendingRef = useRef(new Set());
+  const initiatePeerRef = useRef(null);
   const qualityRef = useRef('auto');
   const statsIntervalRef = useRef(null);
 
@@ -65,6 +67,7 @@ export function useScreenShare({ userName, isHost }) {
     pendingCandidatesRef.current.delete(peerId);
     remoteMediaStreamsRef.current.delete(peerId);
     makingOfferRef.current.delete(peerId);
+    negotiationPendingRef.current.delete(peerId);
     syncRemoteStreamForPeer(peerId, null);
   }, [syncRemoteStreamForPeer]);
 
@@ -116,12 +119,18 @@ export function useScreenShare({ userName, isHost }) {
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed') cleanupPeer(peerId);
     };
+    pc.onnegotiationneeded = () => {
+      initiatePeerRef.current?.(peerId);
+    };
     return pc;
   }, [addLocalTracks, cleanupPeer, syncRemoteStreamForPeer]);
 
   const initiatePeer = useCallback(async (peerId) => {
     const pc = createPeer(peerId);
-    if (pc.signalingState !== 'stable') return;
+    if (pc.signalingState !== 'stable' || makingOfferRef.current.get(peerId)) {
+      negotiationPendingRef.current.add(peerId);
+      return;
+    }
     makingOfferRef.current.set(peerId, true);
     try {
       const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
@@ -133,8 +142,14 @@ export function useScreenShare({ userName, isHost }) {
       });
     } finally {
       makingOfferRef.current.set(peerId, false);
+      if (negotiationPendingRef.current.has(peerId) && pc.signalingState === 'stable') {
+        negotiationPendingRef.current.delete(peerId);
+        queueMicrotask(() => initiatePeerRef.current?.(peerId));
+      }
     }
   }, [createPeer]);
+
+  initiatePeerRef.current = initiatePeer;
 
   const handleSignal = useCallback(async (fromId, signal) => {
     let pc = createPeer(fromId);
@@ -173,6 +188,10 @@ export function useScreenShare({ userName, isHost }) {
         await pc.addIceCandidate(new RTCIceCandidate(candidate));
       }
       pendingCandidatesRef.current.delete(fromId);
+      if (negotiationPendingRef.current.has(fromId)) {
+        negotiationPendingRef.current.delete(fromId);
+        queueMicrotask(() => initiatePeerRef.current?.(fromId));
+      }
     }
     if (signal.type === 'candidate' && pc.remoteDescription) {
       await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
