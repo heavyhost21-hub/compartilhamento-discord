@@ -120,7 +120,7 @@ export function useScreenShare({ userName, isHost }) {
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed') cleanupPeer(peerId);
     };
     pc.onnegotiationneeded = () => {
-      initiatePeerRef.current?.(peerId);
+      Promise.resolve(initiatePeerRef.current?.(peerId)).catch(() => {});
     };
     return pc;
   }, [addLocalTracks, cleanupPeer, syncRemoteStreamForPeer]);
@@ -144,7 +144,7 @@ export function useScreenShare({ userName, isHost }) {
       makingOfferRef.current.set(peerId, false);
       if (negotiationPendingRef.current.has(peerId) && pc.signalingState === 'stable') {
         negotiationPendingRef.current.delete(peerId);
-        queueMicrotask(() => initiatePeerRef.current?.(peerId));
+        queueMicrotask(() => Promise.resolve(initiatePeerRef.current?.(peerId)).catch(() => {}));
       }
     }
   }, [createPeer]);
@@ -190,7 +190,7 @@ export function useScreenShare({ userName, isHost }) {
       pendingCandidatesRef.current.delete(fromId);
       if (negotiationPendingRef.current.has(fromId)) {
         negotiationPendingRef.current.delete(fromId);
-        queueMicrotask(() => initiatePeerRef.current?.(fromId));
+        queueMicrotask(() => Promise.resolve(initiatePeerRef.current?.(fromId)).catch(() => {}));
       }
     }
     if (signal.type === 'candidate' && pc.remoteDescription) {
@@ -214,7 +214,7 @@ export function useScreenShare({ userName, isHost }) {
     });
     participantIds.forEach((peerId) => {
       createPeer(peerId);
-      initiatePeer(peerId);
+      Promise.resolve(initiatePeer(peerId)).catch(() => {});
     });
   }, [cleanupPeer, createPeer, initiatePeer]);
 
@@ -267,7 +267,7 @@ export function useScreenShare({ userName, isHost }) {
         .forEach((user) => {
           const pc = createPeer(user.id);
           addLocalTracks(pc);
-          initiatePeer(user.id);
+          Promise.resolve(initiatePeer(user.id)).catch(() => {});
         });
     } catch (err) {
       if (err.name !== 'NotAllowedError') {
@@ -332,7 +332,7 @@ export function useScreenShare({ userName, isHost }) {
     });
 
     socket.on('signal', ({ fromId, signal }) => {
-      handleSignalRef.current(fromId, signal);
+      Promise.resolve(handleSignalRef.current?.(fromId, signal)).catch(() => {});
     });
 
     socket.on('host-left', () => {
